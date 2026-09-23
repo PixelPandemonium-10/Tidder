@@ -1,0 +1,24 @@
+# One-click deploy on Render (https://render.com): New → Blueprint → pick this repo.
+services:
+  - type: web
+    name: tidder
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: SECRET_KEY
+        generateValue: true        # Render creates a random value once and keeps it
+      - key: GOOGLE_CLIENT_ID
+        sync: false                # you paste it in the Render dashboard
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: TURSO_DATABASE_URL    # free hosted database — Render's free disk is wiped on restart
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
