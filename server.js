@@ -16,6 +16,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(here, '.env')); } catch { /* no .env file — fine */ }
 
 const log = e => console.error('[tidder]', e && e.stack || e);
+process.on('unhandledRejection', (err) => {
+  console.error('UNHANDLED REJECTION:', err);
+});
 
 function loadSecret(dataDir){
   const env = process.env.SECRET_KEY;
