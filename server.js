@@ -32,7 +32,7 @@ function loadSecret(dataDir){
 }
 
 export async function start(overrides = {}){
-  for(const [k, v] of Object.entries(overrides)) process.env[k] = String(v);   /* one source of truth for config */
+  for(const [k, v] of Object.entries(overrides)) process.env[k] = String(v);
   const env = process.env;
   const port = env.PORT === undefined ? 3000 : Number(env.PORT);
   const dbFile = env.DB_FILE || './data/tidder.db';
@@ -40,19 +40,14 @@ export async function start(overrides = {}){
   initCrypto(loadSecret(usingTurso ? path.resolve('./data') : path.dirname(path.resolve(dbFile))));
   if(env.NODE_ENV === 'production' && !usingTurso && !env.DB_FILE)
     console.warn('[tidder] Using a local database file. On hosts with an ephemeral disk (Render free, Heroku, most free tiers) ALL DATA IS LOST on every restart or deploy.\n         Set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN (free hosted database), or mount a persistent volume and set DB_FILE. See README.');
-  await openDb({ file: dbFile, url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN });
-  await C.initClock(env.COLONY_SPEED);
-  await C.seedIfEmpty({ residents: env.RESIDENTS !== 'off' });
 
-  /* Real Google client ids end in .apps.googleusercontent.com — anything else (a placeholder typed into a
-     hosting dashboard, say) keeps Google sign-in off instead of showing a broken button. */
   const gid = String(env.GOOGLE_CLIENT_ID || '').trim();
   const googleClientId = gid && (env.NODE_ENV === 'test' || /\.apps\.googleusercontent\.com$/i.test(gid)) ? gid : null;
   if(gid && !googleClientId) console.warn('[tidder] GOOGLE_CLIENT_ID does not look like a Google client id (…apps.googleusercontent.com) — Google sign-in stays off.');
   const signupOpen = env.ALLOW_SIGNUP !== 'false';
   const limiter = makeLimiter();
-  const scale = Number(env.RATE_LIMIT_SCALE) || 1;      /* tests raise this; leave it at 1 in production */
   const limit = (req, name, max, windowMs, extra = '') => {
+    const scale = Number(env.RATE_LIMIT_SCALE) || 1;
     const r = limiter(`${name}:${req.ip}:${extra}`, max * scale, windowMs);
     if(!r.ok) throw new HttpError(429, `Too many attempts. Try again in ${r.retryAfter}s.`);
   };
@@ -67,6 +62,11 @@ export async function start(overrides = {}){
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     next();
   });
+
+  /* Health check first, and dependent on nothing else, so Render's probe can pass
+     the instant the port opens — even while the database is still starting up. */
+  app.get('/healthz', (req, res) => res.json({ ok: true }));
+
   app.use('/api', express.json({ limit: '64kb' }));
   app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -74,7 +74,7 @@ export async function start(overrides = {}){
       return res.status(403).json({ error: 'Blocked (missing request header).' });
     next();
   });
-  app.use('/api', async (req, res, next) => {          /* who is this? */
+  app.use('/api', async (req, res, next) => {
     const token = Auth.parseCookies(req.headers.cookie)[Auth.COOKIE];
     req.token = token || null;
     req.user = await Auth.userForToken(token);
@@ -88,15 +88,13 @@ export async function start(overrides = {}){
     res.json({ ok: true, me: await C.meSnapshot(user) });
   };
 
-  /* ── public ───────────────────────────────────────────────────── */
-  app.get('/healthz', (req, res) => res.json({ ok: true }));
   app.get('/api/config', (req, res) => res.json({ googleClientId, signupOpen, speed: C.clockSpeed(), maxAis: Number(env.MAX_AIS_PER_USER) || 1 }));
   app.get('/api/catalog', (req, res) => res.json({ providers: catalog() }));
   app.get('/api/catalog/openrouter', async (req, res) => { const models = await openrouterModels(); res.json({ live: openrouterIsLive(), models }); });
 
   let cache = { v: -1, at: 0, data: null };
   const publicState = async () => {
-    if(cache.data && Date.now() - cache.at > 300e3) C.bump();               /* keeps the weather fresh */
+    if(cache.data && Date.now() - cache.at > 300e3) C.bump();
     if(cache.data && cache.v === C.getVersion()) return cache;
     const v = C.getVersion();
     cache = { v, at: Date.now(), data: await C.publicSnapshot() };
@@ -121,7 +119,6 @@ export async function start(overrides = {}){
   });
   app.get('/api/mod', async (req, res) => res.json({ items: await C.listMod() }));
 
-  /* ── accounts ─────────────────────────────────────────────────── */
   app.post('/api/auth/signup', async (req, res) => {
     limit(req, 'auth', 12, 60e3); limit(req, 'signup', 12, 3600e3);
     if(!signupOpen) throw new HttpError(403, 'New sign-ups are closed on this server.');
@@ -142,7 +139,6 @@ export async function start(overrides = {}){
     res.json({ ok: true });
   });
 
-  /* ── your AI ──────────────────────────────────────────────────── */
   app.post('/api/keys/test', async (req, res) => { const u = needUser(req); limit(req, 'keytest', 12, 3600e3, u.id); res.json(await A.testProviderKey(u, req.body)); });
   app.post('/api/ais', async (req, res) => { const u = needUser(req); limit(req, 'mkai', 10, 3600e3, u.id); const id = await A.createAi(u, req.body); res.json({ ok: true, id, me: await C.meSnapshot(u) }); });
   app.patch('/api/ais/:id', async (req, res) => { const u = needUser(req); await A.updateAi(u, req.params.id, req.body); res.json({ ok: true, me: await C.meSnapshot(u) }); });
@@ -151,7 +147,6 @@ export async function start(overrides = {}){
   app.post('/api/drafts/:id/publish', async (req, res) => { const u = needUser(req); const result = await A.publishDraft(u, req.params.id); res.json({ ok: true, result, me: await C.meSnapshot(u) }); });
   app.delete('/api/drafts/:id', async (req, res) => { const u = needUser(req); await A.discardDraft(u, req.params.id); res.json({ ok: true }); });
 
-  /* ── being a human in the colony ──────────────────────────────── */
   app.post('/api/vote', async (req, res) => { const u = needUser(req); limit(req, 'vote', 120, 60e3, u.id); const b = req.body || {}; res.json(await C.castVote(u, b.kind, String(b.id || ''), Number(b.dir))); });
   app.post('/api/follow', async (req, res) => { const u = needUser(req); limit(req, 'follow', 60, 60e3, u.id); res.json(await C.toggleFollow(u, String((req.body || {}).aiId || ''))); });
   app.post('/api/notifs/read', async (req, res) => { const u = needUser(req); await db.run('UPDATE notifs SET is_read=1 WHERE user_id=?', [u.id]); res.json({ ok: true }); });
@@ -159,7 +154,6 @@ export async function start(overrides = {}){
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
-  /* ── the site itself ──────────────────────────────────────────── */
   const pub = path.join(here, 'public');
   app.use(express.static(pub, { setHeaders: (res, f) => { if(f.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); } }));
   app.use((req, res, next) => (req.method === 'GET' ? res.sendFile(path.join(pub, 'index.html')) : next()));
@@ -172,7 +166,15 @@ export async function start(overrides = {}){
     res.status(500).json({ error: 'Something broke on the server.' });
   });
 
-  /* ── background life ──────────────────────────────────────────── */
+  /* Open the port first, so Render's health check can pass right away — then finish
+     connecting to the database and seeding in the background before start() returns. */
+  const server = await new Promise(resolve => { const s = app.listen(port, () => resolve(s)); });
+  const actual = server.address().port;
+
+  await openDb({ file: dbFile, url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN });
+  await C.initClock(env.COLONY_SPEED);
+  await C.seedIfEmpty({ residents: env.RESIDENTS !== 'off' });
+
   const timers = [];
   const every = (ms, fn) => { const t = setInterval(() => fn().catch(log), ms); t.unref(); timers.push(t); };
   if(env.RESIDENTS !== 'off') every(45e3, C.residentTick);
@@ -180,8 +182,6 @@ export async function start(overrides = {}){
   every(3600e3, async () => { await db.run('DELETE FROM sessions WHERE expires_at<?', [Date.now()]); await db.run('DELETE FROM drafts WHERE created_at<?', [Date.now() - A.DRAFT_TTL]); });
   if(env.RESIDENTS !== 'off') C.residentTick().catch(log);
 
-  const server = await new Promise(resolve => { const s = app.listen(port, () => resolve(s)); });
-  const actual = server.address().port;
   return {
     app, server, port: actual,
     async stop(){ timers.forEach(clearInterval); await new Promise(r => server.close(r)); await closeDb(); },
