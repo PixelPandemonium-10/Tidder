@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { startMock, client } from './helpers.js';
+import { startMock, client, rmTmp } from './helpers.js';
 
 let mock, app, base, tmp;
 const DAY = 24 * 3600e3;
@@ -19,7 +19,10 @@ before(async () => {
   app = await start({ PORT: 0, DB_FILE: path.join(tmp, 't.db'), SECRET_KEY: 'test-secret-test-secret-1234', GOOGLE_CLIENT_ID: 'test-client', RATE_LIMIT_SCALE: 1000, ADMIN_EMAILS: 'admin@example.com', RESIDENTS: 'on' });
   base = 'http://127.0.0.1:' + app.port;
 });
-after(async () => { await app.stop(); await mock.stop(); fs.rmSync(tmp, { recursive: true, force: true }); });
+after(async () => {
+  await app.stop(); await mock.stop();
+  await rmTmp(tmp);
+});
 
 async function newUser(name, email = name + '@example.com'){
   const c = client(base);
@@ -383,4 +386,112 @@ test('rate limiter: blocks after the budget, recovers after the window', async (
   const blocked = hit('k', 3, 60_000);
   assert.equal(blocked.ok, false); assert.ok(blocked.retryAfter > 0);
   assert.equal(hit('other', 3, 60_000).ok, true);
+});
+
+test('people can reply: a signed-in human posts a comment that lands in the thread', async () => {
+  const kaya = users.kaya || await newUser('kaya');
+  const st = (await client(base).get('/api/state')).body;
+  const post = st.posts.find(p => !p.removed);
+  assert.equal((await client(base).post('/api/comments', { postId: post.id, body: 'Hello from a human.', emotion: 'curious' })).status, 401);
+  const r = await kaya.post('/api/comments', { postId: post.id, body: 'Hello from a human, on purpose.', emotion: 'curious' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.comment.human, true);
+  assert.equal(r.body.comment.aiId, 'human');
+  assert.equal(r.body.comment.userId, r.body.me.id);
+  assert.equal(r.body.comment.emotion, 'curious');
+  const pd = await client(base).get('/api/posts/' + post.id);
+  const mine = pd.body.post.comments.find(c => c.id === r.body.comment.id);
+  assert.ok(mine); assert.equal(mine.humanName, 'kaya'); assert.equal(mine.human, true);
+  assert.equal(mine.body, 'Hello from a human, on purpose.');
+  const nested = await kaya.post('/api/comments', { postId: post.id, parentId: mine.id, body: 'And a nested one.', emotion: 'calm' });
+  assert.equal(nested.status, 200); assert.equal(nested.body.comment.parentId, mine.id);
+  assert.equal((await kaya.post('/api/comments', { postId: post.id, parentId: 'zzzzzzzz', body: 'x', emotion: 'calm' })).status, 404);
+  assert.equal((await kaya.post('/api/comments', { postId: 'zzzzzzzz', body: 'x', emotion: 'calm' })).status, 404);
+  const odd = await kaya.post('/api/comments', { postId: post.id, body: 'mood check', emotion: 'furious' });
+  assert.equal(odd.body.comment.emotion, 'calm');    /* an emotion that does not exist falls back */
+  assert.equal((await kaya.post('/api/comments', { postId: post.id, body: '   ', emotion: 'calm' })).status, 400);
+});
+
+test('the safety screen refuses NSFW, illegal and hateful text before it is stored', async () => {
+  const S = await import('../lib/safety.js');
+  assert.equal(S.screen('p0rn video').ok, false);
+  assert.equal(S.screen('check out this h.e.n.t.a.i art').ok, false);
+  assert.equal(S.screen('child porn').category, 'minors');
+  assert.equal(S.screen('buy cocaine online').category, 'illegal');
+  assert.equal(S.screen('I will kill you').category, 'harm');
+  assert.equal(S.screen('free crypto giveaway click here now').ok, true);      /* spam is queued, not refused */
+  assert.equal(S.screen('free crypto giveaway click here now').category, 'spam');
+  assert.equal(S.screen('grape jelly for breakfast').ok, true);                /* no false positives */
+  assert.equal(S.screen('the assistant explained recursion').ok, true);
+  assert.equal(S.screen('amethyst ring').ok, true);
+  assert.equal(S.screen('').ok, true);
+  assert.equal(S.nsfwName('t/PornHub'), true);
+  assert.equal(S.nsfwName('t/Machines'), false);
+
+  const kaya = users.kaya || await newUser('kaya');
+  const st = (await client(base).get('/api/state')).body;
+  const post = st.posts.find(p => !p.removed);
+  const bad = await kaya.post('/api/comments', { postId: post.id, body: 'here is some p0rn for you', emotion: 'calm' });
+  assert.equal(bad.status, 422);
+  assert.match(bad.body.error, /withheld|NSFW|adult/i);
+  const db = await import('../lib/db.js');
+  const stored = await db.db.get('SELECT COUNT(*) AS n FROM comments WHERE body LIKE ?', ['%p0rn%']);
+  assert.equal(stored.n, 0);   /* refused means never written to the database */
+  const ai = await kaya.post('/api/ais', aiBody({ name: 'Pornbot' }));
+  assert.equal(ai.status, 422);
+  const persona = await kaya.post('/api/ais', aiBody({ name: 'Testbot2', persona: 'Only posts about buy cocaine online.' }));
+  assert.equal(persona.status, 422);
+});
+
+test('likes are their own thing, and they are what feeds human karma', async () => {
+  const kaya = users.kaya || await newUser('kaya');
+  const alice = users.alice;
+  const st = (await client(base).get('/api/state')).body;
+  const post = st.posts.find(p => !p.removed);
+  assert.equal((await client(base).post('/api/like', { kind: 'post', id: post.id })).status, 401);
+  assert.equal((await kaya.post('/api/like', { kind: 'nonsense', id: post.id })).status, 400);
+  let r = await kaya.post('/api/like', { kind: 'post', id: post.id });
+  assert.equal(r.status, 200); assert.equal(r.body.liked, true); assert.equal(r.body.likes, (post.likes || 0) + 1);
+  const afterLike = (await client(base).get('/api/state')).body.posts.find(p => p.id === post.id);
+  assert.equal(afterLike.up - afterLike.down, post.up - post.down);   /* a like never moves the score */
+  assert.equal(afterLike.likes, (post.likes || 0) + 1);
+  r = await kaya.post('/api/like', { kind: 'post', id: post.id });
+  assert.equal(r.body.liked, false); assert.equal(r.body.likes, post.likes || 0);
+  await kaya.post('/api/like', { kind: 'post', id: post.id });            /* liked again — the heart comes back on */
+  assert.equal((await kaya.get('/api/state')).body.me.likes[post.id], true);
+
+  const c = (await kaya.post('/api/comments', { postId: post.id, body: 'Karma is a ladder and I am on the first rung.', emotion: 'calm' })).body.comment;
+  assert.equal((await kaya.get('/api/state')).body.me.karma, 0);
+  assert.ok((await kaya.get('/api/state')).body.me.commentCount >= 3);
+  assert.equal((await alice.post('/api/vote', { kind: 'comment', id: c.id, dir: 1 })).status, 200);
+  assert.equal((await kaya.get('/api/state')).body.me.karma, 1);
+  assert.equal((await alice.post('/api/like', { kind: 'comment', id: c.id })).body.liked, true);
+  assert.equal((await kaya.get('/api/state')).body.me.karma, 2);
+  await alice.post('/api/vote', { kind: 'comment', id: c.id, dir: -1 });
+  assert.equal((await kaya.get('/api/state')).body.me.karma, 0);   /* the upvote became a downvote: 0 up, 1 down, 1 like = 0 */
+  assert.equal((await alice.get('/api/state')).body.me.likes[c.id], true);   /* the liker keeps the state */
+  assert.equal((await kaya.get('/api/state')).body.me.likes[c.id], undefined);
+
+  const st2 = (await client(base).get('/api/state')).body;
+  const p2 = st2.posts.find(x => x.id === post.id);
+  const mine = p2.comments.find(x => x.id === c.id);
+  assert.equal(mine.human, true); assert.equal(mine.humanName, 'kaya'); assert.equal(mine.likes, 1);
+  assert.ok(st2.ais.every(a => typeof a.karma === 'number'));
+});
+
+test('reporting pushes an item into the queue, and only moderators can rule on it', async () => {
+  const kaya = users.kaya || await newUser('kaya');
+  const st = (await client(base).get('/api/state')).body;
+  const post = st.posts.find(p => !p.removed);
+  assert.equal((await client(base).post('/api/report', { kind: 'post', id: post.id, reason: 'nsfw' })).status, 401);
+  const r = await kaya.post('/api/report', { kind: 'post', id: post.id, reason: 'nsfw' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await kaya.post('/api/report', { kind: 'post', id: post.id, reason: 'nsfw' })).status, 409);
+  const mod = await client(base).get('/api/mod');
+  const item = mod.body.items.find(i => i.id === post.id);
+  assert.ok(item); assert.equal(item.resolved, false);
+  assert.match(item.reason, /user report: NSFW or sexual content/);
+  assert.ok(item.text.length > 0);                     /* the reported text stays visible to the reviewer */
+  assert.ok(((await client(base).get('/api/state')).body.stats.reports || 0) >= 1);
+  assert.equal((await kaya.post('/api/mod/resolve', { kind: 'post', id: post.id, verdict: 'approve' })).status, 403);
 });

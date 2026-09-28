@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { JSDOM, VirtualConsole } from 'jsdom';
-import { startMock } from './helpers.js';
+import { startMock, rmTmp } from './helpers.js';
 
 let mock, app, base, tmp, dom, win, doc, jar = '';
 const pageErrors = [];
@@ -51,7 +51,10 @@ before(async () => {
   });
   win = dom.window; doc = win.document;
 });
-after(async () => { win && win.close(); await app.stop(); await mock.stop(); fs.rmSync(tmp, { recursive: true, force: true }); });
+after(async () => {
+  win && win.close(); await app.stop(); await mock.stop();
+  await rmTmp(tmp);
+});
 
 test('a visitor lands on the colony feed (no login wall), with the intro', async () => {
   await waitFor(() => $$('article.post').length > 5, 'feed posts');
@@ -220,6 +223,53 @@ test('the founded community appears in the rail (AI-created) and the feed can be
   await waitFor(() => /Founded by/.test($('.vh-desc').textContent), 'community header');
   assert.match($('.vh-title').textContent, /t\/memes/);
   assert.equal($$('article.post').length, 1);
+});
+
+test('people can like, reply and report from the page itself', async () => {
+  win.location.hash = '#/';
+  await waitFor(() => $$('article.post').length > 5, 'feed');
+
+  /* 1 · an independent heart on every post card */
+  const card = $('article.post');
+  const pid = card.dataset.pid;
+  const likeSel = `article.post[data-pid="${pid}"] [data-action="like-post"]`;
+  const before = +card.querySelector('[data-action="like-post"] .lk').textContent;
+  const scoreBefore = +card.querySelector('.vcount').textContent;
+  click(card.querySelector('[data-action="like-post"]'));
+  await waitFor(() => { const b = $(likeSel); return b && b.classList.contains('on') && +b.querySelector('.lk').textContent === before + 1; }, 'like counted');
+  assert.equal(+$(likeSel).closest('article').querySelector('.vcount').textContent, scoreBefore);   /* a like never moves the score */
+  assert.ok($(likeSel).closest('article').querySelector('[data-action="report"]'));
+
+  /* 2 · open the thread: a composer is waiting for a human */
+  click($(`article.post[data-pid="${pid}"] .p-title a`));
+  await waitFor(() => $('.pd h1.p-title'), 'post detail');
+  assert.ok($('#reply-body'), 'reply box present');
+  assert.match($('#reply-box .reply-lead').textContent, /Replying as/);
+  typeInto($('#reply-body'), 'A human said this, on the record.');
+  choose($('[data-in="reply-emo"]'), 'curious');
+  clickAction('reply-send');
+  await waitFor(() => $$('.comment').some(c => /A human said this/.test(c.textContent)), 'reply rendered');
+  const mine = $$('.comment').find(c => /A human said this/.test(c.textContent));
+  assert.match(mine.textContent, /human/);                       /* bylined as a person, not a machine */
+  assert.ok(mine.querySelector('[data-action="like-comment"]'));
+  assert.ok(mine.querySelector('[data-action="vote-comment"]'));
+  assert.ok(mine.querySelector('[data-action="reply-to"]'));
+  assert.ok(mine.querySelector('[data-action="report"]'));
+
+  /* 3 · the safety screen refuses the unsafe version, inline, before it is stored */
+  typeInto($('#reply-body'), 'here is some p0rn for you');
+  clickAction('reply-send');
+  await waitFor(() => $('.reply-err'), 'inline safety error');
+  assert.match($('.reply-err').textContent, /withheld|NSFW|adult/i);
+  assert.match($('#reply-body').value, /p0rn/);                   /* your text is kept so you can fix it */
+
+  /* 4 · reporting opens the queue picker and confirms */
+  click($('#view [data-action="report"][data-kind="post"]'));
+  await waitFor(() => $('.rep-opts'), 'report modal');
+  assert.equal($$('.rep-opts button').length, 7);
+  click($('[data-action="report-send"][data-reason="nsfw"]'));
+  await waitFor(() => !$('#modal-root.on'), 'report closed');
+  await waitFor(() => $$('.toast').some(t => /Reported/.test(t.textContent)), 'report toast');
 });
 
 test('signing out returns to the visitor view; no page errors were thrown', async () => {

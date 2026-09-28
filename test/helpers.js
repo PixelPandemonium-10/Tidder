@@ -1,5 +1,32 @@
 import http from 'node:http';
+import fs from 'node:fs';
+import v8 from 'node:v8';
+import vm from 'node:vm';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
+
+/**
+ * Remove a test temp directory without failing the suite over it.
+ * SQLite can keep the database file locked for a while after `close()` — on
+ * Windows `rmSync` then reports EBUSY. Nothing here is part of what is being
+ * tested, so retry (nudging the garbage collector, which owns the stray
+ * native handle) and only warn if the OS never lets go.
+ */
+export async function rmTmp(dir, { tries = 300, every = 100 } = {}){
+  for(let i = 0; i < tries; i++){
+    try { fs.rmSync(dir, { recursive: true, force: true }); return true; }
+    catch(e){
+      if(i === 0) forceGC();
+      if(i === tries - 1){ console.warn('[tidder] test cleanup: left ' + dir + ' behind (' + e.code + ')'); return false; }
+    }
+    await new Promise(r => setTimeout(r, every));
+  }
+  return false;
+}
+function forceGC(){
+  try { v8.setFlagsFromString('--expose_gc'); const gc = vm.runInNewContext('gc'); if(typeof gc === 'function') gc(); }
+  catch { /* the retry loop below still has time */ }
+  finally { try { v8.setFlagsFromString('--no-expose_gc'); } catch {} }
+}
 
 /** a fake provider API: OpenAI-compatible chat, OpenAI Responses, Anthropic Messages, OpenRouter /models, and a JWKS for Google tokens */
 export async function startMock(){

@@ -153,6 +153,15 @@ export async function start(overrides = {}){
 
   /* ── being a human in the colony ──────────────────────────────── */
   app.post('/api/vote', async (req, res) => { const u = needUser(req); limit(req, 'vote', 120, 60e3, u.id); const b = req.body || {}; res.json(await C.castVote(u, b.kind, String(b.id || ''), Number(b.dir))); });
+  app.post('/api/like', async (req, res) => { const u = needUser(req); limit(req, 'like', 120, 60e3, u.id); const b = req.body || {}; res.json(await C.toggleLike(u, b.kind, String(b.id || ''))); });
+  app.post('/api/comments', async (req, res) => {
+    const u = needUser(req);
+    limit(req, 'reply', 6, 60e3, u.id); limit(req, 'replyh', 40, 3600e3, u.id);
+    const b = req.body || {};
+    const comment = await C.publishHumanComment(u, b.postId, b.parentId, b.body, b.emotion);
+    res.json({ ok: true, comment, me: await C.meSnapshot(u) });
+  });
+  app.post('/api/report', async (req, res) => { const u = needUser(req); limit(req, 'report', 12, 3600e3, u.id); const b = req.body || {}; res.json(await C.reportItem(u, b.kind, String(b.id || ''), String(b.reason || ''))); });
   app.post('/api/follow', async (req, res) => { const u = needUser(req); limit(req, 'follow', 60, 60e3, u.id); res.json(await C.toggleFollow(u, String((req.body || {}).aiId || ''))); });
   app.post('/api/notifs/read', async (req, res) => { const u = needUser(req); await db.run('UPDATE notifs SET is_read=1 WHERE user_id=?', [u.id]); res.json({ ok: true }); });
   app.post('/api/mod/resolve', async (req, res) => { const u = needUser(req); const b = req.body || {}; await C.resolveMod(u, b.kind, String(b.id || ''), b.verdict); res.json({ ok: true }); });
