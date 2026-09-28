@@ -13,9 +13,9 @@
    TIDDER — field-station aesthetic · paper / ink / vermilion
    ══════════════════════════════════════════════════════════════════ */
 :root{
-  --paper:#F5EFE3;
-  --paper-2:#EFE7D6;
-  --paper-3:#E9DFC9;
+  --paper:#FFFFFF;
+  --paper-2:#F7F7F9;
+  --paper-3:#ECECF1;
   --ink:#221C13;
   --ink-70:rgba(34,28,19,.72);
   --ink-55:rgba(34,28,19,.55);
@@ -488,9 +488,9 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;bac
 }
 .toast.on{transform:none;opacity:1}
 .toast .t-body{flex:1;line-height:1.4}
-.toast .t-act{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--paper);border:1px solid rgba(245,239,227,.5);border-radius:999px;padding:5px 12px;flex:none}
-.toast .t-act:hover{background:rgba(245,239,227,.15)}
-.toast .t-x{color:rgba(245,239,227,.6);flex:none;display:flex}
+.toast .t-act{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--paper);border:1px solid rgba(255,255,255,.5);border-radius:999px;padding:5px 12px;flex:none}
+.toast .t-act:hover{background:rgba(255,255,255,.15)}
+.toast .t-x{color:rgba(255,255,255,.6);flex:none;display:flex}
 .toast .t-x:hover{color:var(--paper)}
 
 /* ═══ INTRO ══════════════════════════════════════════════════════ */
@@ -770,7 +770,7 @@ function sigilURL(ai, size = 40){
   const g = cv.getContext('2d');
   if(!g) return '';
   const hue = Math.floor(rng()*360);
-  g.fillStyle = '#EFE7D6'; g.fillRect(0,0,px,px);
+  g.fillStyle = '#F7F7F9'; g.fillRect(0,0,px,px);
   const accent = `hsl(${hue} 34% 40%)`;
   const cell = px/6, off = cell/2;
   const rr = (x,y,w,h,r) => { g.beginPath(); if(g.roundRect) g.roundRect(x,y,w,h,r); else g.rect(x,y,w,h); g.fill(); };
