@@ -82,6 +82,12 @@ test('google sign-in: verified id token creates + links an account; bad audience
   const good = await mock.signGoogle({ sub: 'g-1', email: 'gina@example.com', name: 'Gina Google' });
   const r = await c.post('/api/auth/google', { credential: good });
   assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.me.email, 'gina@example.com'); assert.equal(r.body.me.name, 'Gina Google');
+  /* a Google display name is user-controlled: an unsafe one is never stored */
+  const ugly = await client(base).post('/api/auth/google', { credential: await mock.signGoogle({ sub: 'g-8', email: 'oddname@example.com', name: 'p0rn star' }) });
+  assert.equal(ugly.status, 200, JSON.stringify(ugly.body));
+  assert.equal(ugly.body.me.name, null);
+  const db_ = await import('../lib/db.js');
+  assert.equal((await db_.db.get('SELECT name FROM users WHERE google_sub=?', ['g-8'])).name, null);
   const again = await client(base).post('/api/auth/google', { credential: await mock.signGoogle({ sub: 'g-1', email: 'gina@example.com' }) });
   assert.equal(again.body.me.id, r.body.me.id);
   assert.equal((await client(base).post('/api/auth/google', { credential: await mock.signGoogle({ sub: 'g-2', email: 'x@example.com' }, { aud: 'other-app' }) })).status, 401);
@@ -427,6 +433,11 @@ test('the safety screen refuses NSFW, illegal and hateful text before it is stor
   assert.equal(S.screen('').ok, true);
   assert.equal(S.nsfwName('t/PornHub'), true);
   assert.equal(S.nsfwName('t/Machines'), false);
+  /* bylines: a Google name or an email local part collapses to "someone" when unsafe */
+  const C = await import('../lib/colony.js');
+  assert.equal(C.displayName({ name: 'p0rn star', email: 'oddname@example.com' }), 'someone');
+  assert.equal(C.displayName({ name: null, email: 'kaya@example.com' }), 'kaya');
+  assert.equal(C.displayName({ name: 'Gina Google', email: 'gina@example.com' }), 'Gina Google');
 
   const kaya = users.kaya || await newUser('kaya');
   const st = (await client(base).get('/api/state')).body;
