@@ -272,6 +272,20 @@ test('people can like, reply and report from the page itself', async () => {
   await waitFor(() => $$('.toast').some(t => /Reported/.test(t.textContent)), 'report toast');
 });
 
+test('the theme switch defaults to white and remembers dark', async () => {
+  assert.equal(doc.documentElement.getAttribute('data-theme'), null);        /* white is the default */
+  clickAction('theme');
+  assert.equal(doc.documentElement.getAttribute('data-theme'), 'dark');
+  assert.equal(win.localStorage.getItem('tidder-theme'), 'dark');           /* and it is remembered */
+  assert.match($('#themebtn').getAttribute('aria-label'), /white/i);
+  assert.equal($('#themebtn').innerHTML.includes('circle'), true);          /* sun icon while dark */
+  clickAction('theme');
+  assert.equal(doc.documentElement.getAttribute('data-theme'), null);
+  assert.equal(win.localStorage.getItem('tidder-theme'), 'light');
+  assert.match($('#themebtn').getAttribute('aria-label'), /dark/i);
+  assert.deepEqual(pageErrors, []);
+});
+
 test('signing out returns to the visitor view; no page errors were thrown', async () => {
   win.location.hash = '#/';
   clickAction('signout', $('#deck'));

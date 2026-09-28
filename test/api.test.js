@@ -306,6 +306,66 @@ test('moderation: queue is public, verdicts are admin-only', async () => {
   assert.equal((await admin.post('/api/mod/resolve', { kind: other.kind, id: other.id, verdict: 'approve' })).status, 200);
 });
 
+test('roles: an admin grants a moderator, who reads removed items and rules on the queue', async () => {
+  const admin = client(base);
+  assert.equal((await admin.post('/api/auth/login', { email: 'admin@example.com', password: 'correct horse battery' })).status, 200);
+  const eve = await newUser('eve'), stranger = await newUser('stranger');
+
+  /* a plain account can neither read removed content nor the roster */
+  assert.equal((await eve.get('/api/state')).body.me.role, 'user');
+  assert.equal((await eve.get('/api/state')).body.me.isMod, false);
+  assert.equal((await eve.get('/api/mod/removed')).status, 403);
+  assert.equal((await eve.get('/api/mod/team')).status, 403);
+
+  /* only an admin may hand out roles, and only to real accounts with a real role */
+  assert.equal((await eve.post('/api/mod/role', { email: 'stranger@example.com', role: 'mod' })).status, 403);
+  assert.equal((await admin.post('/api/mod/role', { email: 'nobody@example.com', role: 'mod' })).status, 404);
+  assert.equal((await admin.post('/api/mod/role', { email: 'stranger@example.com', role: 'wizard' })).status, 400);
+
+  /* make something to read: report a post, then rule it removed */
+  const post = (await client(base).get('/api/state')).body.posts.find(p => !p.removed);
+  assert.equal((await eve.post('/api/report', { kind: 'post', id: post.id, reason: 'other' })).status, 200);
+  const queued = (await client(base).get('/api/mod')).body.items.find(i => i.id === post.id);
+  assert.ok(queued, 'the report landed in the queue');
+  assert.equal((await admin.post('/api/mod/resolve', { kind: 'post', id: post.id, verdict: 'remove' })).status, 200);
+  assert.equal((await client(base).get('/api/mod')).body.items.find(i => i.id === post.id).text, '');   /* the public sees no text */
+
+  /* grant moderator access */
+  assert.equal((await admin.post('/api/mod/role', { email: 'eve@example.com', role: 'mod' })).status, 200);
+  const me = (await eve.get('/api/state')).body.me;
+  assert.equal(me.role, 'mod'); assert.equal(me.isMod, true); assert.equal(me.isAdmin, false);
+
+  /* ... and with it, the removed content in full */
+  const removed = await eve.get('/api/mod/removed');
+  assert.equal(removed.status, 200);
+  const row = removed.body.items.find(i => i.id === post.id);
+  assert.ok(row, 'the moderator can see the removed post');
+  assert.match(row.text, new RegExp(post.title.slice(0, 12).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.ok(row.reason, 'the removal reason comes with it');
+  /* the queue now serves them the text too */
+  assert.equal((await eve.get('/api/mod')).body.items.find(i => i.id === post.id).text.length > 0, true);
+
+  /* the roster, and the moderator's own row in it */
+  const team = await eve.get('/api/mod/team');
+  assert.equal(team.status, 200);
+  assert.ok(team.body.items.some(m => m.email === 'eve@example.com' && m.role === 'mod'));
+  assert.ok(team.body.items.some(m => m.email === 'admin@example.com' && m.role === 'admin'));
+
+  /* a moderator can restore what was removed */
+  assert.equal((await eve.post('/api/mod/restore', { kind: 'post', id: post.id })).status, 200);
+  assert.equal((await eve.post('/api/mod/restore', { kind: 'post', id: post.id })).status, 409);
+  assert.equal((await client(base).get('/api/posts/' + post.id)).body.post.body.length > 0, true);
+  assert.equal((await stranger.post('/api/mod/restore', { kind: 'post', id: post.id })).status, 403);
+
+  /* revoke: everything goes back to being locked */
+  assert.equal((await admin.post('/api/mod/role', { email: 'eve@example.com', role: 'user' })).status, 200);
+  assert.equal((await eve.get('/api/state')).body.me.role, 'user');
+  assert.equal((await eve.get('/api/mod/removed')).status, 403);
+  assert.equal((await eve.post('/api/mod/resolve', { kind: 'post', id: post.id, verdict: 'approve' })).status, 403);
+  /* an admin cannot lock themselves out */
+  assert.equal((await admin.post('/api/mod/role', { email: 'admin@example.com', role: 'user' })).status, 400);
+});
+
 test('settings: change persona/emotion/model, provider switch needs a key, autopilot flag, notifications read', async () => {
   const u = users.alice, id = (await u.get('/api/state')).body.me.ai.id;
   let r = await u.patch('/api/ais/' + id, { persona: 'Now speaks only in shipping forecasts.', emotion: 'smug', intensity: 15 });

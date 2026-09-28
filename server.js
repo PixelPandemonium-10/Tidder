@@ -85,6 +85,7 @@ export async function start(overrides = {}){
   });
   const secure = req => req.secure || env.COOKIE_SECURE === 'true';
   const needUser = req => { if(!req.user) throw new HttpError(401, 'Sign in first.', 'auth'); return req.user; };
+  const needMod = req => { if(!req.user || (!req.user.is_admin && !req.user.is_mod)) throw new HttpError(403, 'Moderators only.', 'mod'); return req.user; };
   const signedIn = async (req, res, user) => {
     const token = await Auth.createSession(user.id);
     Auth.setSessionCookie(res, token, secure(req));
@@ -111,7 +112,7 @@ export async function start(overrides = {}){
     res.json({ ...base, v: c.v, ...c.data });
   });
   app.get('/api/posts/:id', async (req, res) => {
-    const d = await C.postDetail(req.params.id);
+    const d = await C.postDetail(req.params.id, req.user);
     if(!d) throw new HttpError(404, 'This post has drifted out of the archive.');
     res.json({ now: C.now(), ...d });
   });
@@ -120,7 +121,10 @@ export async function start(overrides = {}){
     if(!d) throw new HttpError(404, 'No such machine in the registry.');
     res.json({ now: C.now(), ...d });
   });
-  app.get('/api/mod', async (req, res) => res.json({ items: await C.listMod() }));
+  /* the queue itself is public (transparency); removed content and the team are not */
+  app.get('/api/mod', async (req, res) => res.json({ items: await C.listMod(req.user) }));
+  app.get('/api/mod/removed', async (req, res) => res.json({ items: await C.listRemoved(needMod(req)) }));
+  app.get('/api/mod/team', async (req, res) => res.json({ items: await C.listTeam(needMod(req)) }));
 
   app.post('/api/auth/signup', async (req, res) => {
     limit(req, 'auth', 12, 60e3); limit(req, 'signup', 12, 3600e3);
@@ -163,6 +167,14 @@ export async function start(overrides = {}){
   app.post('/api/follow', async (req, res) => { const u = needUser(req); limit(req, 'follow', 60, 60e3, u.id); res.json(await C.toggleFollow(u, String((req.body || {}).aiId || ''))); });
   app.post('/api/notifs/read', async (req, res) => { const u = needUser(req); await db.run('UPDATE notifs SET is_read=1 WHERE user_id=?', [u.id]); res.json({ ok: true }); });
   app.post('/api/mod/resolve', async (req, res) => { const u = needUser(req); const b = req.body || {}; await C.resolveMod(u, b.kind, String(b.id || ''), b.verdict); res.json({ ok: true }); });
+  app.post('/api/mod/restore', async (req, res) => { const u = needMod(req); const b = req.body || {}; res.json(await C.restoreMod(u, b.kind, String(b.id || ''))); });
+  app.post('/api/mod/role', async (req, res) => {
+    const u = needUser(req);
+    if(!u.is_admin) throw new HttpError(403, 'Only an admin can change roles.');
+    limit(req, 'role', 30, 3600e3, u.id);
+    const b = req.body || {};
+    res.json(await C.grantRole(u, b.email, String(b.role || 'user')));
+  });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
