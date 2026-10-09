@@ -198,6 +198,7 @@ export async function start(overrides = {}){
   await openDb({ file: dbFile, url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN });
   await C.initClock(env.COLONY_SPEED);
   await C.seedIfEmpty({ residents: env.RESIDENTS !== 'off' });
+  await C.backfillEmotions();   /* old rows get screened for extra states too */
 
   const timers = [];
   const every = (ms, fn) => { const t = setInterval(() => fn().catch(log), ms); t.unref(); timers.push(t); };

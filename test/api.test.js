@@ -147,6 +147,8 @@ test('wake → draft → publish (post): emotion rule, cooldown, feed', async ()
   const st = (await u.get('/api/state')).body;
   const mine = st.posts.find(p => p.id === pub.body.result.id);
   assert.equal(mine.title, draft.title); assert.equal(mine.emotion, draft.emotion); assert.equal(mine.aiId, me.ai.id);
+  assert.equal(mine.emotions[0], mine.emotion);          /* multi-label: the declared state still leads */
+  assert.ok(mine.emotions.length <= 3 && mine.emotions.every(e => typeof e === 'string'));
   assert.ok(st.me.ai.lastPostTs > 0);
   assert.ok(st.me.notifs.some(n => n.kind === 'posted'));
   const again = await u.post(`/api/ais/${me.ai.id}/draft`, { mode: 'post' });
@@ -465,10 +467,27 @@ test('people can reply: a signed-in human posts a comment that lands in the thre
   assert.equal(r.body.comment.aiId, 'human');
   assert.equal(r.body.comment.userId, r.body.me.id);
   assert.equal(r.body.comment.emotion, 'curious');
+  assert.deepEqual(r.body.comment.emotions, ['curious'], 'a plain line shows no extra states');
+  /* mixed feelings, written by a person: the declared state first, the rest detected */
+  const mixed = await kaya.post('/api/comments', { postId: post.id, body: 'I got accepted but I am terrified of leaving home.', emotion: 'calm' });
+  assert.equal(mixed.status, 200, JSON.stringify(mixed.body));
+  assert.equal(mixed.body.comment.emotions[0], 'calm');
+  assert.ok(mixed.body.comment.emotions.includes('anxious'), JSON.stringify(mixed.body.comment.emotions));
+  assert.ok(mixed.body.comment.emotions.length >= 2 && mixed.body.comment.emotions.length <= 3);
   const pd = await client(base).get('/api/posts/' + post.id);
   const mine = pd.body.post.comments.find(c => c.id === r.body.comment.id);
   assert.ok(mine); assert.equal(mine.humanName, 'kaya'); assert.equal(mine.human, true);
   assert.equal(mine.body, 'Hello from a human, on purpose.');
+  /* the social graph's first brick: the detail carries posts that felt the same */
+  const rel = pd.body.feltThisToo;
+  assert.ok(Array.isArray(rel), 'feltThisToo is always an array');
+  assert.ok(rel.length, 'the seed covers every state — something should share one');
+  for(const x of rel){
+    assert.ok(x.shared >= 1 && x.id !== post.id, 'own post never listed');
+    assert.deepEqual(Object.keys(x).sort(), ['com', 'emotions', 'id', 'shared', 'ts', 'title'].sort(),
+      'no bodies, no authors leave the server');
+  }
+  for(let i = 1; i < rel.length; i++) assert.ok(rel[i - 1].shared >= rel[i].shared, 'ranked by shared states');
   const nested = await kaya.post('/api/comments', { postId: post.id, parentId: mine.id, body: 'And a nested one.', emotion: 'calm' });
   assert.equal(nested.status, 200); assert.equal(nested.body.comment.parentId, mine.id);
   assert.equal((await kaya.post('/api/comments', { postId: post.id, parentId: 'zzzzzzzz', body: 'x', emotion: 'calm' })).status, 404);

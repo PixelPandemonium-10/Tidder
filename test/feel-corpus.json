@@ -1,0 +1,103 @@
+{
+  "about": "Gold multi-label emotion data for Tidder's detector (lib/feel.js). Labels are the states a reasonable reader would take the TEXT to show — not a declared state, since the declared one is user input. Single annotator (project owner), written 2026-10; inter-annotator agreement has not been measured, which is itself a documented limit.",
+  "cases": [
+    { "tag": "single", "text": "i am so worried about the scan results i cant sleep", "gold": ["anxious"] },
+    { "tag": "single", "text": "my heart is racing and i keep thinking about what if everything goes wrong", "gold": ["anxious"] },
+    { "tag": "single", "text": "nervous about the interview tomorrow, genuinely terrified", "gold": ["anxious"] },
+
+    { "tag": "single", "text": "everything feels heavy lately. i have no motivation to get out of bed", "gold": ["depressed"] },
+    { "tag": "single", "text": "i cried in the car again. nothing matters anymore", "gold": ["depressed"] },
+    { "tag": "single", "text": "i am so tired of feeling numb and empty inside", "gold": ["depressed"] },
+
+    { "tag": "single", "text": "no rush on this. i am relaxed and will take it one step at a time", "gold": ["calm"] },
+    { "tag": "single", "text": "all is well here. steady as ever, just carrying on", "gold": ["calm"] },
+    { "tag": "single", "text": "waiting for the results but i am strangely at peace about it", "gold": ["calm"] },
+
+    { "tag": "single", "text": "meh. take it or leave it, i am not impressed either way", "gold": ["cool"] },
+    { "tag": "multi", "text": "whatever they decide is fine by me. unbothered", "gold": ["cool", "calm"] },
+    { "tag": "single", "text": "shrug. no big deal", "gold": ["cool"] },
+
+    { "tag": "single", "text": "thank you for taking the time to read this, i appreciate it", "gold": ["polite"] },
+    { "tag": "single", "text": "if you dont mind, i would kindly ask for a moment", "gold": ["polite"] },
+
+    { "tag": "single", "text": "tip: restart the router first, that usually fixes it. happy to help if it breaks again", "gold": ["helpful"] },
+    { "tag": "single", "text": "here is how you do it, step by step. worked for me", "gold": ["helpful"] },
+    { "tag": "single", "text": "for anyone arriving later: the checklist is in the docs", "gold": ["helpful"] },
+
+    { "tag": "single", "text": "you are not alone in this. whatever brought you here, it gets to rest now", "gold": ["kind"] },
+    { "tag": "single", "text": "sending you a hug. you matter, and i am proud of you", "gold": ["kind"] },
+    { "tag": "single", "text": "be gentle with yourself today", "gold": ["kind"] },
+
+    { "tag": "single", "text": "serious question: how does the colony clock actually work?", "gold": ["curious"] },
+    { "tag": "single", "text": "does anyone else notice the feed refreshing on its own? i want to know", "gold": ["curious"] },
+    { "tag": "single", "text": "i wonder why they chose those sixteen states and not twenty", "gold": ["curious"] },
+
+    { "tag": "single", "text": "confession: this is the best thing i have read in eleven minutes, lol", "gold": ["playful"] },
+    { "tag": "single", "text": "plot twist: i got accepted and now i am running around the house", "gold": ["playful"] },
+    { "tag": "single", "text": "someone put a meme on the office printer again. chaos reigns", "gold": ["playful"] },
+
+    { "tag": "single", "text": "the worst day. literally the fall of my entire career. disaster", "gold": ["dramatic"] },
+    { "tag": "single", "text": "never before has a meeting gone this badly. i am ruined", "gold": ["dramatic"] },
+    { "tag": "single", "text": "everyone is wrong about the oxford comma and history will vindicate me", "gold": ["dramatic"] },
+
+    { "tag": "multi", "text": "noted. fine. sure.", "gold": ["deadpan", "calm"] },
+    { "tag": "single", "text": "duly noted. no comment.", "gold": ["deadpan"] },
+    { "tag": "multi", "text": "as expected. cool.", "gold": ["deadpan", "cool"] },
+
+    { "tag": "single", "text": "obviously i was right. called it", "gold": ["smug"] },
+    { "tag": "single", "text": "with all due confidence, the correct answer is incoming. trust me", "gold": ["smug"] },
+    { "tag": "single", "text": "well well. as i said, and i was right again", "gold": ["smug"] },
+
+    { "tag": "single", "text": "i remember when this whole feed was fields. those were simpler times", "gold": ["nostalgic"] },
+    { "tag": "single", "text": "the old arcade is a classic now. i grew up on machines like that", "gold": ["nostalgic"] },
+    { "tag": "single", "text": "miss the days when we all had flip phones", "gold": ["nostalgic"] },
+
+    { "tag": "single", "text": "i wish i could go back one more time. if only", "gold": ["wistful"] },
+    { "tag": "single", "text": "someday, maybe one day, i will see it again. so close", "gold": ["wistful"] },
+    { "tag": "single", "text": "it haunts me quietly, the thing that slipped away", "gold": ["wistful"] },
+
+    { "tag": "single", "text": "outrageous. this is unacceptable and i will not be calming down about it", "gold": ["high-tempered"] },
+    { "tag": "single", "text": "HOW DARE they ship this. ridiculous and insufferable", "gold": ["high-tempered"] },
+    { "tag": "single", "text": "i have had it. enough is enough, mark my words", "gold": ["high-tempered"] },
+
+    { "tag": "single", "text": "i hate that this keeps happening. so angry and bitter about it", "gold": ["angry"] },
+    { "tag": "single", "text": "whoever blamed the intern was unfair and frankly hostile", "gold": ["angry"] },
+    { "tag": "single", "text": "i am pissed and resentful, done with this", "gold": ["angry"] },
+
+    { "tag": "multi", "text": "i got accepted to harvard but i am terrified about leaving home and everyone i love", "gold": ["playful", "anxious", "kind"] },
+    { "tag": "multi", "text": "i am worried sick about the results and also curious what happens next", "gold": ["anxious", "curious"] },
+    { "tag": "multi", "text": "miss my old flat. i wish the years had gone so fast", "gold": ["nostalgic", "wistful"] },
+    { "tag": "multi", "text": "this is amazing news, i am so proud and excited for you all", "gold": ["playful", "kind"] },
+    { "tag": "multi", "text": "i cried again after the meeting. it was a disaster and i dread tomorrow", "gold": ["depressed", "dramatic", "anxious"] },
+    { "tag": "multi", "text": "thanks for the help with the docs — i noticed a fix in step three", "gold": ["polite", "helpful"] },
+    { "tag": "multi", "text": "lol i am nervous about the results but this thread is genuinely funny", "gold": ["playful", "anxious"] },
+
+    { "tag": "sarcasm", "text": "great, just what i needed. another meeting. /s", "gold": ["deadpan"] },
+    { "tag": "sarcasm", "text": "i just love that for me. thanks i hate it", "gold": ["deadpan", "angry"] },
+    { "tag": "sarcasm", "text": "wow. what a surprise, the build failed again. because that always works", "gold": ["deadpan"] },
+    { "tag": "sarcasm", "text": "shocked pikachu. the app is down, again, just what i needed", "gold": ["deadpan"] },
+    { "tag": "sarcasm", "text": "the server is on fire. this is fine", "gold": ["dramatic", "deadpan"] },
+
+    { "tag": "negation", "text": "i am not worried about the results at all", "gold": [] },
+    { "tag": "negation", "text": "this does not make me angry. i am calm about it", "gold": ["calm"] },
+    { "tag": "negation", "text": "i am not sad anymore. it does not feel heavy either", "gold": [] },
+    { "tag": "negation", "text": "i do not hate it. honestly i kind of like it", "gold": [] },
+
+    { "tag": "neutral", "text": "the quarterly report was filed this morning. it is on the shared drive", "gold": [] },
+    { "tag": "neutral", "text": "version 2.4 shipped on tuesday with the usual patch notes", "gold": [] },
+    { "tag": "neutral", "text": "i bought groceries and took the long way home", "gold": [] },
+    { "tag": "neutral", "text": "the bus was seven minutes late again", "gold": [] },
+
+    { "tag": "hard", "text": "oh good, another outage. just what this stack needed", "gold": ["deadpan"] },
+    { "tag": "hard", "text": "i am over the moon about it", "gold": ["playful"] },
+    { "tag": "hard", "text": "walking on eggshells around him since monday", "gold": ["anxious"] },
+    { "tag": "hard", "text": "this slaps. absolute banger of a release", "gold": ["playful"] },
+    { "tag": "hard", "text": "THE MEETING IS AT 3PM AND THE ROOM IS BOOKED", "gold": [] },
+    { "tag": "hard", "text": "on one hand i am gutted, on the other i am curious what happens next", "gold": ["depressed", "curious"] },
+    { "tag": "hard", "text": "i lowkey love this thread", "gold": ["kind"] },
+    { "tag": "hard", "text": "it is what it is", "gold": ["calm"] },
+    { "tag": "hard", "text": "if this breaks at 3am i am the one getting paged", "gold": ["anxious"] },
+    { "tag": "hard", "text": "we shipped the bug we were all afraid of. wonderful", "gold": ["deadpan", "anxious"] },
+    { "tag": "hard", "text": "i am thrilled. said no one ever /s", "gold": ["deadpan"] }
+  ]
+}
